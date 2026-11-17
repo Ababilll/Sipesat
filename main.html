@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIPESAT Desa Tambakcemandi - Pembuat Surat Otomatis</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter untuk UI aplikasi & Tinos (metrik identik Times New Roman) untuk dokumen cetak -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Tinos:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Font antarmuka aplikasi */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+
+        /* Styling Lembar Kertas Surat Resmi (Default A4) */
+        .surat-paper {
+            font-family: 'Times New Roman', 'Tinos', Times, serif;
+            font-size: 12pt;
+            line-height: 1.42;
+            color: #000000;
+            background-color: #ffffff;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 15mm 20mm 18mm 22mm; /* Margin standar surat dinas desa */
+            box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.16), 0 4px 10px -4px rgba(15, 23, 42, 0.08);
+            margin: 0 auto;
+            box-sizing: border-box;
+            position: relative;
+            transition: width 0.25s ease, min-height 0.25s ease;
+        }
+
+        /* Mode Kertas F4 / Folio (215mm x 330mm) */
+        .surat-paper.paper-f4 {
+            width: 215mm;
+            min-height: 330mm;
+        }
+
+        /* Font Kop Surat Resmi */
+        .kop-surat-header {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1f2937;
+        }
+
+        /* Garis Ganda Pemisah Kop Surat (Garis tebal di atas + garis tipis di bawah) */
+        .kop-border {
+            border-bottom: 3px solid #4b5563;
+            position: relative;
+            padding-bottom: 5px;
+            margin-bottom: 16px;
+        }
+        .kop-border::after {
+            content: '';
+            display: block;
+            border-bottom: 1px solid #4b5563;
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            right: 0;
+        }
+
+        /* Tabel Data Sejajar Titik Dua pada Badan Surat */
+        .surat-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .surat-table td {
+            padding: 1.5px 2px;
+            vertical-align: top;
+        }
+        .surat-table td.col-label {
+            width: 185px;
+        }
+        .surat-table td.col-sep {
+            width: 14px;
+            text-align: center;
+        }
+
+        /* Tabel Spesifikasi Perahu untuk Surat BBM Solar */
+        .perahu-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            margin-bottom: 12px;
+            font-size: 11.5pt;
+        }
+        .perahu-table th,
+        .perahu-table td {
+            border: 1px solid #000000;
+            padding: 5px 6px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .perahu-table th {
+            background-color: #bfbfbf;
+            font-weight: normal;
+            line-height: 1.25;
+        }
+
+        /* Responsif Preview pada Layar Mobile/Tablet */
+        @media screen and (max-width: 1023px) {
+            .preview-wrapper {
+                overflow-x: auto;
+                padding: 12px;
+                display: flex;
+                justify-content: flex-start;
+            }
+            .surat-paper {
+                margin: 0;
+            }
+        }
+
+        /* Pengaturan Khusus Cetak / Simpan PDF */
+        @media print {
+            body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-area-container {
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                background: #ffffff !important;
+                position: static !important;
+            }
+            .preview-wrapper {
+                padding: 0 !important;
+                margin: 0 !important;
+                overflow: visible !important;
+                display: block !important;
+            }
+            .surat-paper {
+                box-shadow: none !important;
+                margin: 0 !important;
+                page-break-after: avoid;
+            }
+        }
+
+        /* Scrollbar halus untuk panel form */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+    <!-- Style dinamis untuk ukuran halaman cetak (@page) -->
+    <style id="dynamic-page-style">
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased selection:bg-emerald-100 selection:text-emerald-900">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="no-print fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- HEADER / NAVBAR APLIKASI -->
+    <header class="no-print bg-emerald-800 text-white shadow-md sticky top-0 z-30">
+        <div class="max-w-[1640px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="bg-white/15 p-2 rounded-xl backdrop-blur-sm border border-white/10">
+                    <i data-lucide="file-signature" class="w-6 h-6 text-emerald-200"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm sm:text-lg leading-tight tracking-tight">SIPESAT Desa Tambakcemandi</h1>
+                    <p class="text-[11px] sm:text-xs text-emerald-200 hidden sm:block">Sistem Pembuatan Surat Administrasi Otomatis • Kec. Sedati, Kab. Sidoarjo</p>
+                </div>
+            </div>
+
+            <!-- Tombol Aksi Utama -->
+            <div class="flex items-center gap-2 sm:gap-2.5">
+                <button type="button" onclick="isiDataContoh()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg border border-emerald-600 transition cursor-pointer" title="Isi form dengan data contoh sesuai dokumen resmi">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-amber-300"></i>
+                    <span class="hidden md:inline">Isi Data Contoh</span>
+                    <span class="md:hidden">Contoh</span>
+                </button>
+                <button type="button" onclick="kosongkanForm()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium bg-emerald-900/70 hover:bg-emerald-900 text-emerald-100 rounded-lg border border-emerald-700 transition cursor-pointer" title="Kosongkan formulir untuk warga baru">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span class="hidden md:inline">Kosongkan Form</span>
+                    <span class="md:hidden">Kosongkan</span>
+                </button>
+                <button type="button" onclick="cetakSurat()" class="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-lg shadow-sm transition cursor-pointer">
+                    <i data-lucide="printer" class="w-4 h-4"></i>
+                    <span>Cetak / Simpan PDF</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- TAB SWITCHER MOBILE (< 1024px) -->
+    <div class="no-print lg:hidden bg-white border-b border-slate-200 px-4 py-2 flex gap-2 sticky top-16 z-20">
+        <button id="tab-btn-form" onclick="switchMobileTab('form')" class="flex-1 py-2 px-3 rounded-lg text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center gap-2">
+            <i data-lucide="edit-3" class="w-4 h-4"></i> Isi Formulir
+        </button>
+        <button id="tab-btn-preview" onclick="switchMobileTab('preview')" class="flex-1 py-2 px-3 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 border border-transparent flex items-center justify-center gap-2">
+            <i data-lucide="eye" class="w-4 h-4"></i> Lihat Surat
+        </button>
+    </div>
+
+    <!-- MAIN WORKSPACE: SPLIT SCREEN -->
+    <main class="max-w-[1640px] mx-auto flex flex-col lg:flex-row min-h-[calc(100vh-4rem)]">
+
+        <!-- PANEL KIRI: PILIHAN JENIS SURAT & FORMULIR INPUT -->
+        <section id="panel-form" class="no-print w-full lg:w-[490px] xl:w-[530px] bg-white border-r border-slate-200 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto shrink-0 p-4 sm:p-6 space-y-5">
+
+            <!-- 1. PILIH JENIS SURAT (4 TAB/TOMBOL RESMI) -->
+            <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5 flex items-center gap-1.5">
+                    <i data-lucide="layers" class="w-4 h-4 text-emerald-700"></i> 1. Pilih Jenis Surat Keterangan
+                </label>
+                <div class="grid grid-cols-2 gap-2" id="jenis-surat-grid">
+                    <button type="button" data-jenis="SKTM" onclick="pilihJenisSurat('SKTM')" class="jenis-btn text-left p-3 rounded-xl border-2 border-emerald-600 bg-emerald-50/80 text-emerald-950 transition cursor-pointer">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-bold uppercase tracking-wide text-emerald-700">SKTM</span>
+                            <i data-lucide="heart-handshake" class="w-4 h-4 text-emerald-600"></i>
+                        </div>
+                        <p class="text-xs font-semibold leading-snug">Surat Keterangan Tidak Mampu</p>
+                    </button>
+
+                    <button type="button" data-jenis="DOMISILI" onclick="pilihJenisSurat('DOMISILI')" class="jenis-btn text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition cursor-pointer">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-bold uppercase tracking-wide text-slate-500">Domisili</span>
+                            <i data-lucide="map-pin" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <p class="text-xs font-semibold leading-snug">Surat Keterangan Domisili</p>
+                    </button>
+
+                    <button type="button" data-jenis="USAHA" onclick="pilihJenisSurat('USAHA')" class="jenis-btn text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition cursor-pointer">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-bold uppercase tracking-wide text-slate-500">SKU / Usaha</span>
+                            <i data-lucide="store" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <p class="text-xs font-semibold leading-snug">Surat Keterangan Usaha / Domisili Usaha</p>
+                    </button>
+
+                    <button type="button" data-jenis="SOLAR" onclick="pilihJenisSurat('SOLAR')" class="jenis-btn text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition cursor-pointer">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-bold uppercase tracking-wide text-slate-500">BBM Solar</span>
+                            <i data-lucide="anchor" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <p class="text-xs font-semibold leading-snug">Surat Keterangan BBM Solar (Nelayan)</p>
+                    </button>
+                </div>
+            </div>
+
+            <!-- SUB-PILIHAN KHUSUS SKU / DOMISILI USAHA -->
+            <div id="subjenis-usaha-box" class="hidden bg-amber-50/80 border border-amber-200 rounded-xl p-3.5">
+                <label class="block text-xs font-bold text-amber-900 mb-2">Pilih Jenis Surat Usaha:</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center gap-2 p-2.5 rounded-lg bg-white border border-amber-300 cursor-pointer text-xs font-semibold text-slate-800">
+                        <input type="radio" name="subJenisUsaha" value="SKU" checked onchange="updatePreview()" class="text-emerald-600 focus:ring-emerald-500">
+                        <span>Surat Keterangan Usaha</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-2.5 rounded-lg bg-white border border-amber-300 cursor-pointer text-xs font-semibold text-slate-800">
+                        <input type="radio" name="subJenisUsaha" value="DOMISILI_USAHA" onchange="updatePreview()" class="text-emerald-600 focus:ring-emerald-500">
+                        <span>Surat Keterangan Domisili Usaha</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 2. NOMOR SURAT, TANGGAL & PENANDATANGAN -->
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                        <i data-lucide="hash" class="w-3.5 h-3.5 text-emerald-700"></i> 2. Registrasi & Pengesahan Surat
+                    </span>
+                </div>
+
+                <!-- Format Nomor Surat Resmi Desa Tambakcemandi: 400 / [No. Urut] / 438.7.5.5 / [Tahun] -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Nomor Surat (<span class="font-mono text-[11px]">400 / No. Urut / 438.7.5.5 / Tahun</span>)</label>
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-2.5 py-2 bg-slate-200/80 text-slate-700 rounded-lg text-xs font-mono font-semibold border border-slate-300 select-none">400 /</span>
+                        <input type="text" id="nomorUrut" value="159" oninput="updatePreview()" placeholder="159" class="w-20 text-center rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-mono font-bold text-slate-800 focus:border-emerald-500 outline-none">
+                        <span class="px-2.5 py-2 bg-slate-200/80 text-slate-700 rounded-lg text-xs font-mono font-semibold border border-slate-300 select-none">/ 438.7.5.5 /</span>
+                        <input type="text" id="tahunSurat" value="2026" maxlength="4" oninput="updatePreview()" placeholder="2026" class="w-20 text-center rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-mono font-bold text-slate-800 focus:border-emerald-500 outline-none">
+                        <button type="button" onclick="acakNomorUrut()" class="p-2 bg-white hover:bg-slate-100 text-slate-600 rounded-lg border border-slate-300 transition cursor-pointer" title="Buat nomor urut baru">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label for="tanggalSurat" class="block text-xs font-medium text-slate-600 mb-1">Tanggal Surat</label>
+                        <input type="date" id="tanggalSurat" onchange="updatePreview()" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="namaKades" class="block text-xs font-medium text-slate-600 mb-1">Nama Kepala Desa</label>
+                        <input type="text" id="namaKades" value="K H O I R U D I N" oninput="updatePreview()" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 uppercase focus:border-emerald-500 outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. DATA PEMOHON (DINAMIS SESUAI JENIS SURAT) -->
+            <div class="space-y-3.5">
+                <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <i data-lucide="user-check" class="w-4 h-4 text-emerald-700"></i> 3. Data Identitas Pemohon
+                    </h2>
+                    <span class="text-[11px] text-slate-400">Otomatis muncul di surat</span>
+                </div>
+
+                <!-- Nama Lengkap (Semua Surat) -->
+                <div>
+                    <label for="namaPemohon" class="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap <span class="text-red-500">*</span></label>
+                    <input type="text" id="namaPemohon" oninput="updatePreview()" placeholder="Masukkan nama lengkap pemohon" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none">
+                </div>
+
+                <!-- NIK / Nomor KTP 16 Digit (Semua Surat) -->
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="nikPemohon" id="label-nik" class="block text-xs font-semibold text-slate-700">NIK (Nomor Induk Kependudukan) <span class="text-red-500">*</span></label>
+                        <span id="nikCounter" class="text-[11px] font-mono font-medium text-slate-400">0 / 16 digit</span>
+                    </div>
+                    <input type="text" id="nikPemohon" maxlength="16" inputmode="numeric" oninput="validasiDanUpdateNIK(this)" placeholder="Masukkan 16 digit angka NIK" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm font-mono tracking-wide focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none">
+                    <p id="nikError" class="hidden text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> NIK harus terdiri dari tepat 16 digit angka.
+                    </p>
+                </div>
+
+                <!-- Tempat & Tanggal Lahir (Semua Surat) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label for="tempatLahir" class="block text-xs font-semibold text-slate-700 mb-1">Tempat Lahir</label>
+                        <input type="text" id="tempatLahir" oninput="updatePreview()" placeholder="Contoh: Sidoarjo" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="tanggalLahir" class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Lahir</label>
+                        <input type="date" id="tanggalLahir" onchange="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Jenis Kelamin (Khusus Domisili) -->
+                <div id="field-jk" class="hidden">
+                    <label for="jenisKelamin" class="block text-xs font-semibold text-slate-700 mb-1">Jenis Kelamin</label>
+                    <select id="jenisKelamin" onchange="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-emerald-500 outline-none">
+                        <option value="Laki-laki">Laki-laki</option>
+                        <option value="Perempuan">Perempuan</option>
+                    </select>
+                </div>
+
+                <!-- Agama & Warga Negara (Domisili, SKU, Solar) -->
+                <div id="field-agama-wn" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div id="wrap-agama">
+                        <label for="agama" class="block text-xs font-semibold text-slate-700 mb-1">Agama</label>
+                        <select id="agama" onchange="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-emerald-500 outline-none">
+                            <option value="Islam">Islam</option>
+                            <option value="Kristen">Kristen</option>
+                            <option value="Katolik">Katolik</option>
+                            <option value="Hindu">Hindu</option>
+                            <option value="Buddha">Buddha</option>
+                            <option value="Khonghucu">Khonghucu</option>
+                        </select>
+                    </div>
+                    <div id="wrap-wn">
+                        <label for="wargaNegara" class="block text-xs font-semibold text-slate-700 mb-1">Warga Negara</label>
+                        <input type="text" id="wargaNegara" value="Indonesia" oninput="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Status Perkawinan (Khusus SKU / Domisili Usaha) -->
+                <div id="field-status-kawin" class="hidden">
+                    <label for="statusKawin" class="block text-xs font-semibold text-slate-700 mb-1">Status Perkawinan</label>
+                    <select id="statusKawin" onchange="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-emerald-500 outline-none">
+                        <option value="Kawin">Kawin</option>
+                        <option value="Belum Kawin">Belum Kawin</option>
+                        <option value="Cerai Hidup">Cerai Hidup</option>
+                        <option value="Cerai Mati">Cerai Mati</option>
+                    </select>
+                </div>
+
+                <!-- Pekerjaan (Domisili, SKU, Solar) -->
+                <div id="field-pekerjaan" class="hidden">
+                    <label for="pekerjaan" class="block text-xs font-semibold text-slate-700 mb-1">Pekerjaan</label>
+                    <input type="text" id="pekerjaan" oninput="updatePreview()" placeholder="Contoh: Wiraswasta / Karyawan Swasta / Nelayan" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:border-emerald-500 outline-none">
+                </div>
+
+                <!-- Alamat Utama Pemohon (Semua Surat) -->
+                <div>
+                    <label for="alamatPemohon" id="label-alamat" class="block text-xs font-semibold text-slate-700 mb-1">Alamat <span class="text-red-500">*</span></label>
+                    <textarea id="alamatPemohon" rows="2" oninput="updatePreview()" placeholder="Contoh: Dsn. Gisikkidul RT.007 RW.002 Desa Tambakcemandi" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none"></textarea>
+                </div>
+
+                <!-- Kecamatan & Kabupaten (Khusus SKTM sesuai format dokumen asli) -->
+                <div id="field-kec-kab" class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label for="kecamatanPemohon" class="block text-xs font-semibold text-slate-700 mb-1">Kecamatan</label>
+                        <input type="text" id="kecamatanPemohon" value="Sedati" oninput="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="kabupatenPemohon" class="block text-xs font-semibold text-slate-700 mb-1">Kabupaten</label>
+                        <input type="text" id="kabupatenPemohon" value="Sidoarjo" oninput="updatePreview()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Keperluan (Khusus SKTM) -->
+                <div id="field-keperluan">
+                    <label for="keperluan" class="block text-xs font-semibold text-slate-700 mb-1">Keperluan</label>
+                    <input type="text" id="keperluan" oninput="updatePreview()" placeholder="Contoh: Pengajuan Pemasangan Listrik Gratis" class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-sm focus:border-emerald-500 outline-none">
+                </div>
+
+                <!-- Alamat Domisili di Tambakcemandi (Khusus Surat Keterangan Domisili) -->
+                <div id="field-domisili-tambak" class="hidden bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-1.5">
+                    <label for="alamatDomisili" class="block text-xs font-bold text-emerald-900">Alamat Domisili di Desa Tambakcemandi <span class="text-red-500">*</span></label>
+                    <textarea id="alamatDomisili" rows="2" oninput="updatePreview()" placeholder="Contoh: Dusun Candisari RT 19 RW 05 – Perum Alana Cemandi C1-27, Desa Tambakcemandi, Sedati, Sidoarjo" class="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 outline-none"></textarea>
+                    <p class="text-[11px] text-emerald-700">Teks ini akan ditampilkan pada bagian Keterangan domisili surat.</p>
+                </div>
+
+                <!-- Detail Usaha (Khusus SKU / Domisili Usaha) -->
+                <div id="field-detail-usaha" class="hidden bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-3">
+                    <div>
+                        <label for="lokasiUsaha" class="block text-xs font-bold text-emerald-900 mb-1">Lokasi / Domisili Usaha <span class="text-red-500">*</span></label>
+                        <input type="text" id="lokasiUsaha" oninput="updatePreview()" placeholder="Contoh: Dusun Candisari Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo" class="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div class="sm:col-span-2">
+                            <label for="namaUsaha" class="block text-xs font-bold text-emerald-900 mb-1">Nama / Jenis Usaha <span class="text-red-500">*</span></label>
+                            <input type="text" id="namaUsaha" oninput="updatePreview()" placeholder="Contoh: JUAL BELI IKAN SEGAR" class="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm uppercase focus:border-emerald-500 outline-none">
+                        </div>
+                        <div>
+                            <label for="sejakTahun" class="block text-xs font-bold text-emerald-900 mb-1">Sejak Tahun (Opsional)</label>
+                            <input type="text" id="sejakTahun" maxlength="4" oninput="updatePreview()" placeholder="Contoh: 2020" class="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm focus:border-emerald-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daftar Perahu Nelayan (Khusus Surat Keterangan BBM Solar) -->
+                <div id="field-daftar-perahu" class="hidden bg-sky-50/80 border border-sky-200 rounded-xl p-3.5 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                                <i data-lucide="ship" class="w-4 h-4 text-sky-700"></i> Spesifikasi Perahu & Mesin Nelayan
+                            </h3>
+                            <p class="text-[11px] text-sky-700">Dapat menambahkan lebih dari 1 unit perahu</p>
+                        </div>
+                        <button type="button" onclick="tambahBarisPerahu()" class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold rounded-lg transition cursor-pointer">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah Perahu
+                        </button>
+                    </div>
+
+                    <div id="perahu-list-container" class="space-y-2.5">
+                        <!-- Baris input perahu dirender lewat JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tombol Cetak Bawah -->
+            <div class="pt-2 pb-6 space-y-2">
+                <button type="button" onclick="cetakSurat()" class="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
+                    <i data-lucide="printer" class="w-5 h-5"></i>
+                    Cetak Surat Sekarang / Simpan PDF
+                </button>
+            </div>
+        </section>
+
+        <!-- PANEL KANAN: LIVE PREVIEW KERTAS SURAT -->
+        <section id="panel-preview" class="print-area-container hidden lg:flex flex-1 bg-slate-200/85 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto flex-col items-center py-5 px-4">
+
+            <!-- Toolbar Atas Preview (Status & Pilihan Ukuran Kertas A4 / F4) -->
+            <div class="no-print w-full max-w-[215mm] mb-3 flex flex-wrap items-center justify-between gap-2 bg-white/90 backdrop-blur-sm px-3.5 py-2 rounded-xl border border-slate-300/80 shadow-sm text-xs">
+                <div class="flex items-center gap-2 text-slate-700 font-medium">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Live Preview Dokumen Resmi</span>
+                </div>
+
+                <!-- Pilihan Ukuran Kertas Cetak -->
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-500 font-medium">Ukuran Kertas:</span>
+                    <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+                        <button type="button" id="btn-paper-a4" onclick="setUkuranKertas('A4')" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-emerald-800 shadow-sm transition cursor-pointer">
+                            A4 (210×297mm)
+                        </button>
+                        <button type="button" id="btn-paper-f4" onclick="setUkuranKertas('F4')" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer">
+                            F4 / Folio (215×330mm)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Wrapper Kertas Surat -->
+            <div class="preview-wrapper w-full flex justify-center pb-10">
+                <article id="dokumen-surat" class="surat-paper">
+
+                    <!-- KOP SURAT TETAP DESA TAMBAKCEMANDI (TANPA FITUR KUSTOMISASI) -->
+                    <header class="kop-surat-header kop-border flex items-center gap-3">
+                        <!-- SVG Vektor Lambang Resmi Pemerintah Kabupaten Sidoarjo -->
+                        <div class="w-[88px] h-[96px] shrink-0 flex items-center justify-center">
+                            <svg viewBox="0 0 120 130" class="w-full h-full" xmlns="http://www.w3.org/2000/svg" aria-label="Lambang Kabupaten Sidoarjo">
+                                <!-- Perisai Luar Biru Muda -->
+                                <path d="M 48 8 L 72 8 L 76 20 Q 92 23 107 18 L 102 43 Q 113 55 115 66 Q 97 104 60 123 Q 23 104 5 66 Q 7 55 18 43 L 13 18 Q 28 23 44 20 Z"
+                                      fill="#74C2E1" stroke="#6B7280" stroke-width="2.2" stroke-linejoin="round"/>
+                                <!-- Perisai Dalam Hijau -->
+                                <path d="M 50 13 L 70 13 L 73 24 Q 88 27 101 23 L 96 45 Q 106 56 108 65 Q 92 99 60 116 Q 28 99 12 65 Q 14 56 24 45 L 19 23 Q 32 27 47 24 Z"
+                                      fill="#5EC282" stroke="#6B7280" stroke-width="1.2" stroke-linejoin="round"/>
+
+                                <!-- Bintang Kuning di Puncak Perisai -->
+                                <polygon points="60,16 62.6,23.2 70.2,23.4 64.1,27.9 66.3,35.2 60,30.8 53.7,35.2 55.9,27.9 49.8,23.4 57.4,23.2"
+                                         fill="#FDE047" stroke="#6B7280" stroke-width="0.9" stroke-linejoin="round"/>
+
+                                <!-- Batang Tebu Kuning (Sisi Kiri Lingkaran) -->
+                                <g fill="#FEF08A" stroke="#6B7280" stroke-width="1">
+                                    <path d="M 42 40 Q 34 52 34 65 Q 34 78 42 90 L 46 87 Q 39 76 39 65 Q 39 53 46 43 Z"/>
+                                    <line x1="36" y1="50" x2="43" y2="52"/>
+                                    <line x1="34" y1="60" x2="40" y2="61"/>
+                                    <line x1="34" y1="70" x2="40" y2="69"/>
+                                    <line x1="36" y1="80" x2="43" y2="78"/>
+                                </g>
+
+                                <!-- Tangkai Padi Kuning (Sisi Kanan Lingkaran) -->
+                                <g fill="#FDE047" stroke="#6B7280" stroke-width="0.9">
+                                    <path d="M 78 40 Q 86 52 86 65 Q 86 78 78 90" fill="none" stroke="#6B7280" stroke-width="1.3"/>
+                                    <ellipse cx="77" cy="43" rx="2.3" ry="4.2" transform="rotate(-25 77 43)"/>
+                                    <ellipse cx="83" cy="48" rx="2.3" ry="4.2" transform="rotate(20 83 48)"/>
+                                    <ellipse cx="79" cy="53" rx="2.3" ry="4.2" transform="rotate(-20 79 53)"/>
+                                    <ellipse cx="86" cy="58" rx="2.3" ry="4.2" transform="rotate(15 86 58)"/>
+                                    <ellipse cx="80" cy="63" rx="2.3" ry="4.2" transform="rotate(-10 80 63)"/>
+                                    <ellipse cx="86" cy="68" rx="2.3" ry="4.2" transform="rotate(10 86 68)"/>
+                                    <ellipse cx="79" cy="73" rx="2.3" ry="4.2" transform="rotate(15 79 73)"/>
+                                    <ellipse cx="84" cy="79" rx="2.3" ry="4.2" transform="rotate(-15 84 79)"/>
+                                    <ellipse cx="77" cy="84" rx="2.3" ry="4.2" transform="rotate(25 77 84)"/>
+                                </g>
+
+                                <!-- Lingkaran Biru Muda Tengah -->
+                                <circle cx="60" cy="65" r="21" fill="#74C2E1" stroke="#6B7280" stroke-width="1.3"/>
+
+                                <!-- Udang Putih (Membentuk Bagian Atas Huruf S) -->
+                                <g fill="#FFFFFF" stroke="#4B5563" stroke-width="1" stroke-linejoin="round">
+                                    <path d="M 52 57 C 49 51, 56 46, 65 49 C 69 50, 72 53, 73 56 C 69 54, 65 53, 60 54 C 56 55, 55 58, 57 61 L 53 63 C 50 61, 50 59, 52 57 Z"/>
+                                    <polygon points="53,63 49,66 55,66"/>
+                                    <path d="M 72 54 Q 65 57 59 57" fill="none" stroke="#4B5563" stroke-width="0.7"/>
+                                </g>
+
+                                <!-- Ikan Bandeng Putih (Membentuk Bagian Bawah Huruf S) -->
+                                <g fill="#FFFFFF" stroke="#4B5563" stroke-width="1" stroke-linejoin="round">
+                                    <path d="M 47 71 C 51 67, 59 67, 65 71 C 69 74, 69 79, 64 81 C 58 83, 51 80, 47 75 L 43 78 L 44 73 L 42 69 Z"/>
+                                    <polygon points="57,68 60,64 62,69"/>
+                                    <circle cx="65" cy="75" r="0.9" fill="#4B5563"/>
+                                </g>
+
+                                <!-- Pita Kuning Bertuliskan KABUPATEN SIDOARJO -->
+                                <g>
+                                    <polygon points="24,86 35,90 33,99 22,95 26,91" fill="#FDE047" stroke="#6B7280" stroke-width="1"/>
+                                    <polygon points="96,86 85,90 87,99 98,95 94,91" fill="#FDE047" stroke="#6B7280" stroke-width="1"/>
+                                    <path d="M 32 88 Q 60 99 88 88 L 86 98 Q 60 109 34 98 Z" fill="#FEF08A" stroke="#6B7280" stroke-width="1.1"/>
+                                    <path id="curvePitaSidoarjo" d="M 35 95 Q 60 105 85 95" fill="none"/>
+                                    <text font-family="Arial, sans-serif" font-size="5.3" font-weight="bold" fill="#374151" letter-spacing="0.3">
+                                        <textPath href="#curvePitaSidoarjo" startOffset="50%" text-anchor="middle">KABUPATEN SIDOARJO</textPath>
+                                    </text>
+                                </g>
+                            </svg>
+                        </div>
+
+                        <!-- Teks Kop Surat Resmi Desa Tambakcemandi -->
+                        <div class="flex-1 text-center leading-snug">
+                            <p class="text-[13.5pt] font-normal uppercase tracking-wide text-slate-800">PEMERINTAH KABUPATEN SIDOARJO</p>
+                            <p class="text-[12.5pt] font-normal uppercase tracking-wide text-slate-800">KECAMATAN SEDATI</p>
+                            <p class="text-[17pt] font-bold uppercase tracking-wide text-slate-900 leading-tight mt-0.5">DESA TAMBAKCEMANDI</p>
+                            <p class="text-[9.5pt] text-slate-700 mt-0.5">Jl. Raya Candisari No.36, Tambakcemandi, Sedati, Jawa Timur 61257</p>
+                            <p class="text-[9.5pt] text-slate-700">
+                                Telp. (031) 8918590, Laman <span class="text-sky-600 underline">tambakcemandi-sedati.desa.id</span>,
+                            </p>
+                            <p class="text-[9.5pt] text-slate-700">
+                                Pos-el <span class="text-sky-600 underline">tambakcemandi@sidoarjokab.go.id</span>
+                            </p>
+                            <p class="text-[9.5pt] text-slate-700 text-right pr-1 mt-0.5">Kode Pos 61253</p>
+                        </div>
+                    </header>
+
+                    <!-- AREA KONTEN SURAT DINAMIS (DIRENDER SESUAI 4 JENIS SURAT) -->
+                    <div id="surat-body-container">
+                        <!-- Konten diisi otomatis oleh JavaScript -->
+                    </div>
+
+                </article>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // Inisialisasi ikon Lucide
+        lucide.createIcons();
+
+        // State global aplikasi
+        let currentJenis = 'SKTM';
+        let currentPaperSize = 'A4';
+        let daftarPerahu = [
+            { namaPerahu: 'RONGGOLAWE', jmlMesin: '1', dayaMesin: '10,5', bahanBakar: 'Solar', lamaOperasional: '10 Jam' }
+        ];
+
+        // Escape HTML untuk mencegah masalah karakter khusus
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Format Tanggal ke Bahasa Indonesia (Contoh: 03 Juli 2026 atau 31 Agustus 2026)
+        function formatTanggalIndo(dateString, padDay = true) {
+            if (!dateString) return '....................';
+            const bulanIndo = [
+                'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+            ];
+            const parts = dateString.split('-');
+            if (parts.length !== 3) return dateString;
+            const tahun = parts[0];
+            const bulan = bulanIndo[parseInt(parts[1], 10) - 1];
+            const hariNum = parseInt(parts[2], 10);
+            const hari = padDay ? String(hariNum).padStart(2, '0') : String(hariNum);
+            return `${hari} ${bulan} ${tahun}`;
+        }
+
+        // Acak Nomor Urut Surat
+        function acakNomorUrut() {
+            const randomNum = String(Math.floor(Math.random() * 240) + 10).padStart(3, '0');
+            document.getElementById('nomorUrut').value = randomNum;
+            updatePreview();
+        }
+
+        // Pengaturan Ukuran Kertas Cetak (A4 atau F4)
+        function setUkuranKertas(size) {
+            currentPaperSize = size;
+            const paperEl = document.getElementById('dokumen-surat');
+            const btnA4 = document.getElementById('btn-paper-a4');
+            const btnF4 = document.getElementById('btn-paper-f4');
+            const pageStyle = document.getElementById('dynamic-page-style');
+
+            if (size === 'F4') {
+                paperEl.classList.add('paper-f4');
+                btnF4.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-emerald-800 shadow-sm transition cursor-pointer';
+                btnA4.className = 'px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer';
+                pageStyle.innerHTML = `@media print { @page { size: 215mm 330mm; margin: 0; } }`;
+            } else {
+                paperEl.classList.remove('paper-f4');
+                btnA4.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-emerald-800 shadow-sm transition cursor-pointer';
+                btnF4.className = 'px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer';
+                pageStyle.innerHTML = `@media print { @page { size: A4 portrait; margin: 0; } }`;
+            }
+        }
+
+        // Validasi NIK hanya angka & maksimal 16 digit
+        function validasiDanUpdateNIK(inputEl) {
+            inputEl.value = inputEl.value.replace(/\D/g, '');
+            const len = inputEl.value.length;
+            const counter = document.getElementById('nikCounter');
+            const errorMsg = document.getElementById('nikError');
+
+            counter.textContent = `${len} / 16 digit`;
+
+            if (len === 16) {
+                counter.className = 'text-[11px] font-mono font-bold text-emerald-600';
+                inputEl.classList.remove('border-amber-400');
+                inputEl.classList.add('border-emerald-500');
+                errorMsg.classList.add('hidden');
+            } else if (len > 0) {
+                counter.className = 'text-[11px] font-mono font-medium text-amber-600';
+                inputEl.classList.add('border-amber-400');
+                inputEl.classList.remove('border-emerald-500');
+                errorMsg.classList.remove('hidden');
+            } else {
+                counter.className = 'text-[11px] font-mono font-medium text-slate-400';
+                inputEl.classList.remove('border-amber-400', 'border-emerald-500');
+                errorMsg.classList.add('hidden');
+            }
+
+            updatePreview();
+        }
+
+        // Pilih Jenis Surat & Sesuaikan Kolom Form
+        function pilihJenisSurat(jenis) {
+            currentJenis = jenis;
+
+            // Update styling tombol pilihan surat
+            document.querySelectorAll('.jenis-btn').forEach(btn => {
+                const isSelected = btn.getAttribute('data-jenis') === jenis;
+                if (isSelected) {
+                    btn.className = 'jenis-btn text-left p-3 rounded-xl border-2 border-emerald-600 bg-emerald-50/80 text-emerald-950 transition cursor-pointer shadow-xs';
+                    btn.querySelector('span').className = 'text-xs font-bold uppercase tracking-wide text-emerald-700';
+                    btn.querySelector('svg').classList.replace('text-slate-400', 'text-emerald-600');
+                } else {
+                    btn.className = 'jenis-btn text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition cursor-pointer';
+                    btn.querySelector('span').className = 'text-xs font-bold uppercase tracking-wide text-slate-500';
+                    btn.querySelector('svg').classList.replace('text-emerald-600', 'text-slate-400');
+                }
+            });
+
+            // Referensi elemen-elemen form kondisional
+            const subJenisUsahaBox = document.getElementById('subjenis-usaha-box');
+            const fieldJK = document.getElementById('field-jk');
+            const fieldAgamaWN = document.getElementById('field-agama-wn');
+            const wrapWN = document.getElementById('wrap-wn');
+            const fieldStatusKawin = document.getElementById('field-status-kawin');
+            const fieldPekerjaan = document.getElementById('field-pekerjaan');
+            const fieldKecKab = document.getElementById('field-kec-kab');
+            const fieldKeperluan = document.getElementById('field-keperluan');
+            const fieldDomisiliTambak = document.getElementById('field-domisili-tambak');
+            const fieldDetailUsaha = document.getElementById('field-detail-usaha');
+            const fieldDaftarPerahu = document.getElementById('field-daftar-perahu');
+
+            const labelNik = document.getElementById('label-nik');
+            const labelAlamat = document.getElementById('label-alamat');
+            const alamatInput = document.getElementById('alamatPemohon');
+            const pekerjaanInput = document.getElementById('pekerjaan');
+
+            // Reset visibilitas semua blok kondisional
+            subJenisUsahaBox.classList.add('hidden');
+            fieldJK.classList.add('hidden');
+            fieldAgamaWN.classList.add('hidden');
+            wrapWN.classList.remove('hidden');
+            fieldStatusKawin.classList.add('hidden');
+            fieldPekerjaan.classList.add('hidden');
+            fieldKecKab.classList.add('hidden');
+            fieldKeperluan.classList.add('hidden');
+            fieldDomisiliTambak.classList.add('hidden');
+            fieldDetailUsaha.classList.add('hidden');
+            fieldDaftarPerahu.classList.add('hidden');
+
+            // Tampilkan & sesuaikan label sesuai jenis surat
+            if (jenis === 'SKTM') {
+                labelNik.innerHTML = 'NIK <span class="text-red-500">*</span>';
+                labelAlamat.innerHTML = 'Alamat <span class="text-red-500">*</span>';
+                alamatInput.placeholder = 'Contoh: Dsn. Gisikkidul RT.007 RW.002 Desa Tambakcemandi';
+                fieldKecKab.classList.remove('hidden');
+                fieldKeperluan.classList.remove('hidden');
+            } else if (jenis === 'DOMISILI') {
+                labelNik.innerHTML = 'NIK <span class="text-red-500">*</span>';
+                labelAlamat.innerHTML = 'Alamat Asal (Sesuai KTP) <span class="text-red-500">*</span>';
+                alamatInput.placeholder = 'Contoh: Semampir Selatan 2-A/73-B RT.004/RW.007 Kel. Medokan Semampir, Surabaya';
+                pekerjaanInput.placeholder = 'Contoh: Wiraswasta / Karyawan BUMN';
+                fieldJK.classList.remove('hidden');
+                fieldAgamaWN.classList.remove('hidden');
+                fieldPekerjaan.classList.remove('hidden');
+                fieldDomisiliTambak.classList.remove('hidden');
+            } else if (jenis === 'USAHA') {
+                subJenisUsahaBox.classList.remove('hidden');
+                labelNik.innerHTML = 'NIK <span class="text-red-500">*</span>';
+                labelAlamat.innerHTML = 'Alamat Pemohon <span class="text-red-500">*</span>';
+                alamatInput.placeholder = 'Contoh: Dsn. Candisari RT 12 RW 03 Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo';
+                pekerjaanInput.placeholder = 'Contoh: Karyawan Swasta / Wiraswasta';
+                fieldAgamaWN.classList.remove('hidden');
+                fieldStatusKawin.classList.remove('hidden');
+                fieldPekerjaan.classList.remove('hidden');
+                fieldDetailUsaha.classList.remove('hidden');
+            } else if (jenis === 'SOLAR') {
+                labelNik.innerHTML = 'Nomor KTP (16 Digit) <span class="text-red-500">*</span>';
+                labelAlamat.innerHTML = 'Alamat <span class="text-red-500">*</span>';
+                alamatInput.placeholder = 'Contoh: Dsn. Candisari RT.09 RW.03 Desa Tambakcemandi Kecamatan Sedati Kabupaten Sidoarjo';
+                if (!pekerjaanInput.value) {
+                    pekerjaanInput.value = 'Nelayan / Perikanan';
+                }
+                fieldAgamaWN.classList.remove('hidden');
+                fieldPekerjaan.classList.remove('hidden');
+                fieldDaftarPerahu.classList.remove('hidden');
+                renderDaftarPerahuForm();
+            }
+
+            updatePreview();
+        }
+
+        // Manajemen Baris Perahu (Khusus Surat BBM Solar)
+        function renderDaftarPerahuForm() {
+            const container = document.getElementById('perahu-list-container');
+            container.innerHTML = '';
+
+            daftarPerahu.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-sky-200 rounded-lg p-3 space-y-2 relative';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                        <span class="text-[11px] font-bold text-sky-800 uppercase">Perahu Unit #${index + 1}</span>
+                        ${daftarPerahu.length > 1 ? `
+                            <button type="button" onclick="hapusBarisPerahu(${index})" class="text-xs text-red-600 hover:text-red-700 font-medium inline-flex items-center gap-1 cursor-pointer">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <div class="col-span-2 sm:col-span-2">
+                            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Nama Perahu</label>
+                            <input type="text" value="${escapeHtml(item.namaPerahu)}" oninput="updatePerahuField(${index}, 'namaPerahu', this.value)" placeholder="Contoh: RONGGOLAWE" class="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs uppercase font-semibold focus:border-sky-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Jml Mesin</label>
+                            <input type="text" value="${escapeHtml(item.jmlMesin)}" oninput="updatePerahuField(${index}, 'jmlMesin', this.value)" placeholder="1" class="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs text-center focus:border-sky-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Daya Mesin (PK)</label>
+                            <input type="text" value="${escapeHtml(item.dayaMesin)}" oninput="updatePerahuField(${index}, 'dayaMesin', this.value)" placeholder="10,5" class="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs text-center focus:border-sky-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Bahan Bakar</label>
+                            <input type="text" value="${escapeHtml(item.bahanBakar)}" oninput="updatePerahuField(${index}, 'bahanBakar', this.value)" placeholder="Solar" class="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs text-center focus:border-sky-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Lama Operasional/Hari</label>
+                            <input type="text" value="${escapeHtml(item.lamaOperasional)}" oninput="updatePerahuField(${index}, 'lamaOperasional', this.value)" placeholder="10 Jam" class="w-full rounded border border-slate-300 px-2.5 py-1.5 text-xs text-center focus:border-sky-500 outline-none">
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            lucide.createIcons();
+        }
+
+        function tambahBarisPerahu() {
+            daftarPerahu.push({
+                namaPerahu: '',
+                jmlMesin: '1',
+                dayaMesin: '10,5',
+                bahanBakar: 'Solar',
+                lamaOperasional: '10 Jam'
+            });
+            renderDaftarPerahuForm();
+            updatePreview();
+        }
+
+        function hapusBarisPerahu(index) {
+            if (daftarPerahu.length <= 1) return;
+            daftarPerahu.splice(index, 1);
+            renderDaftarPerahuForm();
+            updatePreview();
+        }
+
+        function updatePerahuField(index, field, value) {
+            daftarPerahu[index][field] = value;
+            updatePreview();
+        }
+
+        // FUNGSI UTAMA: RENDER LIVE PREVIEW KERTAS SURAT
+        function updatePreview() {
+            const container = document.getElementById('surat-body-container');
+
+            // Ambil data registrasi & pejabat
+            const nomorUrut = document.getElementById('nomorUrut').value.trim() || '...';
+            const tahunSurat = document.getElementById('tahunSurat').value.trim() || '2026';
+            const nomorLengkap = `400/${nomorUrut}/438.7.5.5/${tahunSurat}`;
+            const tanggalSuratStr = formatTanggalIndo(document.getElementById('tanggalSurat').value, true);
+            const namaKadesInput = document.getElementById('namaKades').value.trim() || 'K H O I R U D I N';
+            // Versi rapat tanpa spasi berlebih untuk baris pembuka jika user memakai default spaced
+            const namaKadesRapat = namaKadesInput.replace(/\s+/g, '') === 'KHOIRUDIN' ? 'KHOIRUDIN' : namaKadesInput;
+
+            // Ambil data pemohon umum
+            const nama = escapeHtml(document.getElementById('namaPemohon').value.trim()) || '........................................';
+            const nik = escapeHtml(document.getElementById('nikPemohon').value.trim()) || '........................................';
+            const tempatLahir = escapeHtml(document.getElementById('tempatLahir').value.trim());
+            const tglLahirRaw = document.getElementById('tanggalLahir').value;
+            const ttl = (tempatLahir || tglLahirRaw)
+                ? `${tempatLahir || '........'}, ${formatTanggalIndo(tglLahirRaw, true)}`
+                : '........................................';
+
+            const jk = escapeHtml(document.getElementById('jenisKelamin').value);
+            const agama = escapeHtml(document.getElementById('agama').value);
+            const wargaNegara = escapeHtml(document.getElementById('wargaNegara').value.trim()) || 'Indonesia';
+            const statusKawin = escapeHtml(document.getElementById('statusKawin').value);
+            const pekerjaan = escapeHtml(document.getElementById('pekerjaan').value.trim()) || '........................................';
+            const alamat = escapeHtml(document.getElementById('alamatPemohon').value.trim()) || '........................................';
+
+            // =========================================================================
+            // TEMPLATE A: SURAT KETERANGAN TIDAK MAMPU (SKTM)
+            // =========================================================================
+            if (currentJenis === 'SKTM') {
+                const kecamatan = escapeHtml(document.getElementById('kecamatanPemohon').value.trim()) || 'Sedati';
+                const kabupaten = escapeHtml(document.getElementById('kabupatenPemohon').value.trim()) || 'Sidoarjo';
+                const keperluan = escapeHtml(document.getElementById('keperluan').value.trim()) || '........................................';
+
+                container.innerHTML = `
+                    <div class="text-center mt-4 mb-5">
+                        <h2 class="text-[13pt] font-bold uppercase underline underline-offset-4 tracking-wide">SURAT KETERANGAN TIDAK MAMPU</h2>
+                        <p class="text-[12pt] mt-0.5">Nomor : ${escapeHtml(nomorLengkap)}</p>
+                    </div>
+
+                    <p class="mb-2">Yang bertanda tangan di bawah ini :</p>
+                    <table class="surat-table mb-3">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="uppercase">${escapeHtml(namaKadesRapat)}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Jabatan</td>
+                            <td class="col-sep">:</td>
+                            <td>KEPALA DESA TAMBAKCEMANDI</td>
+                        </tr>
+                    </table>
+
+                    <p class="mb-2">Menerangkan dengan sebenar-benarnya bahwa :</p>
+                    <table class="surat-table mb-4">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="font-bold uppercase">${nama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Tempat / Tgl lahir</td>
+                            <td class="col-sep">:</td>
+                            <td>${ttl}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">NIK</td>
+                            <td class="col-sep">:</td>
+                            <td>${nik}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Alamat</td>
+                            <td class="col-sep">:</td>
+                            <td>${alamat}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Kecamatan</td>
+                            <td class="col-sep">:</td>
+                            <td>${kecamatan}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Kabupaten</td>
+                            <td class="col-sep">:</td>
+                            <td>${kabupaten}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Keperluan</td>
+                            <td class="col-sep">:</td>
+                            <td>${keperluan}</td>
+                        </tr>
+                    </table>
+
+                    <div class="space-y-2 text-justify">
+                        <p>Keterangan</p>
+                        <p>Bahwa benar orang tersebut diatas benar-benar Penduduk Desa Tambakcemandi Kecamatan Sedati Kabupaten Sidoarjo.</p>
+                        <p>Bahwa orang tersebut benar-benar dari keluarga yang tidak mampu/miskin.</p>
+                        <p class="pt-1">Demikian surat keterangan ini dibuat dengan sebenar-benarnya.</p>
+                    </div>
+
+                    <div class="mt-10 flex justify-end">
+                        <div class="w-[260px] text-center">
+                            <p>Tambakcemandi, ${tanggalSuratStr}</p>
+                            <p>Kepala Desa Tambakcemandi</p>
+                            <div class="h-20"></div>
+                            <p class="font-bold underline uppercase">${escapeHtml(namaKadesInput)}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // =========================================================================
+            // TEMPLATE B: SURAT KETERANGAN DOMISILI
+            // =========================================================================
+            else if (currentJenis === 'DOMISILI') {
+                const alamatDomisili = escapeHtml(document.getElementById('alamatDomisili').value.trim()) || '........................................';
+
+                container.innerHTML = `
+                    <div class="text-center mt-4 mb-5">
+                        <h2 class="text-[13pt] font-bold uppercase underline underline-offset-4 tracking-wide">SURAT KETERANGAN DOMISILI</h2>
+                        <p class="text-[12pt] mt-0.5">Nomor : ${escapeHtml(nomorLengkap)}</p>
+                    </div>
+
+                    <p class="mb-2">Yang bertanda tangan di bawah ini :</p>
+                    <table class="surat-table mb-3">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="uppercase">${escapeHtml(namaKadesRapat)}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Jabatan</td>
+                            <td class="col-sep">:</td>
+                            <td>KEPALA DESA TAMBAKCEMANDI</td>
+                        </tr>
+                    </table>
+
+                    <p class="mb-2">Menerangkan dengan benarnya bahwa :</p>
+                    <table class="surat-table mb-4">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="font-bold uppercase">${nama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">NIK</td>
+                            <td class="col-sep">:</td>
+                            <td>${nik}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Tempat/Tgl. Lahir</td>
+                            <td class="col-sep">:</td>
+                            <td>${ttl}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Jenis Kelamin</td>
+                            <td class="col-sep">:</td>
+                            <td>${jk}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Agama</td>
+                            <td class="col-sep">:</td>
+                            <td>${agama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Warga Negara</td>
+                            <td class="col-sep">:</td>
+                            <td>${wargaNegara}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Pekerjaan</td>
+                            <td class="col-sep">:</td>
+                            <td>${pekerjaan}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Alamat</td>
+                            <td class="col-sep">:</td>
+                            <td>${alamat}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Keterangan</td>
+                            <td class="col-sep">:</td>
+                            <td class="text-justify">Bahwa orang tersebut diatas benar berdomisili di ${alamatDomisili}.</td>
+                        </tr>
+                    </table>
+
+                    <p class="text-justify mt-4">
+                        Demikian surat keterangan ini dibuat dengan sebenarnya dan untuk dipergunakan sebagaimana mestinya.
+                    </p>
+
+                    <div class="mt-10 flex justify-end">
+                        <div class="w-[260px] text-center">
+                            <p>Tambakcemandi, ${formatTanggalIndo(document.getElementById('tanggalSurat').value, false)}</p>
+                            <p class="uppercase">KEPALA DESA TAMBAKCEMANDI</p>
+                            <div class="h-20"></div>
+                            <p class="font-bold underline uppercase">${escapeHtml(namaKadesInput)}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // =========================================================================
+            // TEMPLATE C: SURAT KETERANGAN USAHA (SKU) & DOMISILI USAHA
+            // =========================================================================
+            else if (currentJenis === 'USAHA') {
+                const subJenis = document.querySelector('input[name="subJenisUsaha"]:checked')?.value || 'SKU';
+                const isDomisiliUsaha = subJenis === 'DOMISILI_USAHA';
+                const judulSurat = isDomisiliUsaha ? 'SURAT KETERANGAN DOMISILI USAHA' : 'SURAT KETERANGAN USAHA';
+
+                // Tampilkan / sembunyikan field Warga Negara sesuai sub-jenis
+                const wrapWN = document.getElementById('wrap-wn');
+                if (isDomisiliUsaha) {
+                    wrapWN.classList.remove('hidden');
+                } else {
+                    wrapWN.classList.add('hidden');
+                }
+
+                const lokasiUsaha = escapeHtml(document.getElementById('lokasiUsaha').value.trim()) || 'Dusun Candisari Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo';
+                const namaUsaha = escapeHtml(document.getElementById('namaUsaha').value.trim()).toUpperCase() || '........................................';
+                const sejakTahun = escapeHtml(document.getElementById('sejakTahun').value.trim());
+                const klausulTahun = sejakTahun ? ` Sejak Tahun ${sejakTahun}` : '';
+
+                container.innerHTML = `
+                    <div class="text-center mt-4 mb-5">
+                        <h2 class="text-[13pt] font-bold uppercase underline underline-offset-4 tracking-wide">${judulSurat}</h2>
+                        <p class="text-[12pt] mt-0.5">Nomor : ${escapeHtml(nomorLengkap)}</p>
+                    </div>
+
+                    <p class="mb-2">Yang bertanda tangan di bawah ini :</p>
+                    <table class="surat-table mb-3">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="uppercase">${escapeHtml(namaKadesInput)}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Jabatan</td>
+                            <td class="col-sep">:</td>
+                            <td>KEPALA DESA TAMBAKCEMANDI</td>
+                        </tr>
+                    </table>
+
+                    <p class="mb-2">Menerangkan dengan sebenar-benarnya bahwa :</p>
+                    <table class="surat-table mb-3">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="font-bold uppercase">${nama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Tempat/Tgl. Lahir</td>
+                            <td class="col-sep">:</td>
+                            <td>${ttl}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Agama</td>
+                            <td class="col-sep">:</td>
+                            <td>${agama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Status Perkawinan</td>
+                            <td class="col-sep">:</td>
+                            <td>${statusKawin}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Pekerjaan</td>
+                            <td class="col-sep">:</td>
+                            <td>${pekerjaan}</td>
+                        </tr>
+                        ${isDomisiliUsaha ? `
+                        <tr>
+                            <td class="col-label">Warga Negara</td>
+                            <td class="col-sep">:</td>
+                            <td>${wargaNegara}</td>
+                        </tr>
+                        ` : ''}
+                        <tr>
+                            <td class="col-label">NIK</td>
+                            <td class="col-sep">:</td>
+                            <td>${nik}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Alamat</td>
+                            <td class="col-sep">:</td>
+                            <td>${alamat}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Keterangan</td>
+                            <td class="col-sep">:</td>
+                            <td></td>
+                        </tr>
+                    </table>
+
+                    <div class="space-y-2 text-justify">
+                        <p>Bahwa orang tersebut diatas benar memiliki usaha yang berdomisili di ${lokasiUsaha}</p>
+                        <p>Bahwa orang tersebut diatas benar memiliki Usaha &ldquo;<strong>${namaUsaha}</strong>&rdquo; di Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo${klausulTahun} yang sampai saat ini berjalan lancar.</p>
+                        <p class="pt-2">Demikian surat keterangan ini dibuat dengan sebenar-benarnya.</p>
+                    </div>
+
+                    <div class="mt-10 flex justify-end">
+                        <div class="w-[260px] text-center">
+                            <p>Tambakcemandi, ${formatTanggalIndo(document.getElementById('tanggalSurat').value, false)}</p>
+                            <p class="uppercase">KEPALA DESA TAMBAKCEMANDI</p>
+                            <div class="h-20"></div>
+                            <p class="font-bold underline uppercase">${escapeHtml(namaKadesInput)}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // =========================================================================
+            // TEMPLATE D: SURAT KETERANGAN BBM SOLAR (NELAYAN)
+            // =========================================================================
+            else if (currentJenis === 'SOLAR') {
+                const rowsHtml = daftarPerahu.map((p, idx) => `
+                    <tr>
+                        <td>${idx + 1}</td>
+                        <td class="uppercase">${escapeHtml(p.namaPerahu) || '-'}</td>
+                        <td>${escapeHtml(p.jmlMesin) || '-'}</td>
+                        <td>${escapeHtml(p.dayaMesin) || '-'}</td>
+                        <td>${escapeHtml(p.bahanBakar) || 'Solar'}</td>
+                        <td>${escapeHtml(p.lamaOperasional) || '-'}</td>
+                    </tr>
+                `).join('');
+
+                container.innerHTML = `
+                    <div class="text-center mt-4 mb-4">
+                        <h2 class="text-[13pt] font-bold uppercase underline underline-offset-4 tracking-wide">SURAT KETERANGAN</h2>
+                        <p class="text-[12pt] mt-0.5">Nomor : ${escapeHtml(nomorLengkap)}</p>
+                    </div>
+
+                    <p class="text-justify mb-3">
+                        Yang bertanda tangan di bawah ini Kepala Desa Tambakcemandi Kecamatan Sedati Kabupaten Sidoarjo, menerangkan dengan sebenar-benarnya bahwa :
+                    </p>
+
+                    <table class="surat-table mb-3 ml-6" style="width: calc(100% - 24px);">
+                        <tr>
+                            <td class="col-label">Nama</td>
+                            <td class="col-sep">:</td>
+                            <td class="font-bold uppercase">${nama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Tempat/Tgl. Lahir</td>
+                            <td class="col-sep">:</td>
+                            <td>${ttl}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Warga Negara</td>
+                            <td class="col-sep">:</td>
+                            <td>${wargaNegara}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Agama</td>
+                            <td class="col-sep">:</td>
+                            <td>${agama}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Pekerjaan</td>
+                            <td class="col-sep">:</td>
+                            <td>${pekerjaan}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Nomor KTP</td>
+                            <td class="col-sep">:</td>
+                            <td>${nik}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Alamat</td>
+                            <td class="col-sep">:</td>
+                            <td>${alamat}</td>
+                        </tr>
+                        <tr>
+                            <td class="col-label">Keterangan</td>
+                            <td class="col-sep">:</td>
+                            <td>-</td>
+                        </tr>
+                    </table>
+
+                    <ol class="list-decimal pl-12 pr-1 space-y-1 text-justify mb-2">
+                        <li>Bahwa orang tersebut adalah benar-benar penduduk desa Tambakcemandi Kecamatan Sedati Kabupaten Sidoarjo.</li>
+                        <li>Bahwa orang tersebut di atas benar-benar bekerja sebagai Nelayan Desa Tambakcemandi Kecamatan Sedati Kabupaten Sidoarjo yang membeli bahan bakar minyak ( Solar ) untuk dipergunakan keperluan melaut / nelayan.</li>
+                        <li>Bahwa orang tersebut memiliki perahu berjumlah ${daftarPerahu.length} unit dengan spesifikasi sebagai berikut :</li>
+                    </ol>
+
+                    <table class="perahu-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 34px;">No</th>
+                                <th style="width: 140px;">Nama Perahu</th>
+                                <th style="width: 75px;">Jml<br>Mesin</th>
+                                <th style="width: 75px;">Daya<br>Mesin</th>
+                                <th style="width: 80px;">Bahan<br>Bakar</th>
+                                <th>Lama Operasional Mesin dalam<br>Hari (Jam)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+
+                    <div class="space-y-1 text-justify mt-3">
+                        <p>Surat ini digunakan sebagai persyaratan untuk permohonan surat rekomendasi pembelian jenis bahan bakar minyak tetentu (Solar, Gas, dll).</p>
+                        <p>Demikian surat keterangan ini dikeluarkan untuk dipergunakan sebagaimana mestinya.</p>
+                    </div>
+
+                    <div class="mt-8 flex justify-end">
+                        <div class="w-[270px]">
+                            <table class="w-full text-[12pt] mb-2">
+                                <tr>
+                                    <td style="width: 95px;">Dikeluarkan</td>
+                                    <td style="width: 12px;">:</td>
+                                    <td>di Tambakcemandi</td>
+                                </tr>
+                                <tr>
+                                    <td>Tanggal</td>
+                                    <td>:</td>
+                                    <td>${formatTanggalIndo(document.getElementById('tanggalSurat').value, false)}</td>
+                                </tr>
+                            </table>
+                            <div class="text-center">
+                                <p>Kepala Desa Tambakcemandi</p>
+                                <div class="h-16"></div>
+                                <p class="font-bold underline uppercase">${escapeHtml(namaKadesRapat)}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // ISI DATA CONTOH SESUAI DOKUMEN RESMI DESA TAMBAKCEMANDI
+        function isiDataContoh() {
+            const nikInput = document.getElementById('nikPemohon');
+
+            if (currentJenis === 'SKTM') {
+                document.getElementById('nomorUrut').value = '159';
+                document.getElementById('namaPemohon').value = 'DWI INDARTI';
+                nikInput.value = '3515176206790003';
+                document.getElementById('tempatLahir').value = 'Jombang';
+                document.getElementById('tanggalLahir').value = '1979-06-22';
+                document.getElementById('alamatPemohon').value = 'Dsn. Gisikkidul RT.007 RW.002 Desa Tambakcemandi';
+                document.getElementById('kecamatanPemohon').value = 'Sedati';
+                document.getElementById('kabupatenPemohon').value = 'Sidoarjo';
+                document.getElementById('keperluan').value = 'Pengajuan Pemasangan Listrik Gratis';
+            } else if (currentJenis === 'DOMISILI') {
+                document.getElementById('nomorUrut').value = '239';
+                document.getElementById('namaPemohon').value = 'ITSNA MAR’ATUL ULYA';
+                nikInput.value = '3317066808820004';
+                document.getElementById('tempatLahir').value = 'Rembang';
+                document.getElementById('tanggalLahir').value = '1982-08-28';
+                document.getElementById('jenisKelamin').value = 'Perempuan';
+                document.getElementById('agama').value = 'Islam';
+                document.getElementById('wargaNegara').value = 'Indonesia';
+                document.getElementById('pekerjaan').value = 'Wiraswasta';
+                document.getElementById('alamatPemohon').value = 'Semampir Selatan 2-A/73-B RT.004/RW.007 Kelurahan Medokan Semampir, Sukolilo, Surabaya';
+                document.getElementById('alamatDomisili').value = 'Dusun Candisari RT 19 RW 05 – Perum Alana Cemandi C1-27, Desa Tambakcemandi, Sedati, Sidoarjo';
+            } else if (currentJenis === 'USAHA') {
+                const subJenis = document.querySelector('input[name="subJenisUsaha"]:checked')?.value || 'SKU';
+                if (subJenis === 'DOMISILI_USAHA') {
+                    document.getElementById('nomorUrut').value = '184';
+                    document.getElementById('namaPemohon').value = 'MOHAMAD QAWIN RASIT';
+                    nikInput.value = '3506212405940001';
+                    document.getElementById('tempatLahir').value = 'Kediri';
+                    document.getElementById('tanggalLahir').value = '1994-05-24';
+                    document.getElementById('agama').value = 'Islam';
+                    document.getElementById('statusKawin').value = 'Kawin';
+                    document.getElementById('pekerjaan').value = 'Wiraswasta';
+                    document.getElementById('wargaNegara').value = 'Indonesia';
+                    document.getElementById('alamatPemohon').value = 'Gisik Cemandi RT.008 RW.003 Desa Gisik Cemandi Kec. Sedati Kab. Sidoarjo';
+                    document.getElementById('lokasiUsaha').value = 'Dusun Candisari RT.016 RW.004 Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo';
+                    document.getElementById('namaUsaha').value = 'JUAL IKAN SEGAR';
+                    document.getElementById('sejakTahun').value = '2020';
+                } else {
+                    document.getElementById('nomorUrut').value = '243';
+                    document.getElementById('namaPemohon').value = 'KHUSNUL IMALAH';
+                    nikInput.value = '3515175205760004';
+                    document.getElementById('tempatLahir').value = 'Sidoarjo';
+                    document.getElementById('tanggalLahir').value = '1976-05-12';
+                    document.getElementById('agama').value = 'Islam';
+                    document.getElementById('statusKawin').value = 'Kawin';
+                    document.getElementById('pekerjaan').value = 'Karyawan Swasta';
+                    document.getElementById('alamatPemohon').value = 'Dsn. Candisari RT 12 RW 03 Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo';
+                    document.getElementById('lokasiUsaha').value = 'Dusun Candisari Desa Tambakcemandi Kec. Sedati Kab. Sidoarjo';
+                    document.getElementById('namaUsaha').value = 'JUAL BELI IKAN SEGAR';
+                    document.getElementById('sejakTahun').value = '';
+                }
+            } else if (currentJenis === 'SOLAR') {
+                document.getElementById('nomorUrut').value = '219';
+                document.getElementById('namaPemohon').value = 'ABD. HAMID';
+                nikInput.value = '3515170412880001';
+                document.getElementById('tempatLahir').value = 'Sidoarjo';
+                document.getElementById('tanggalLahir').value = '1988-12-04';
+                document.getElementById('wargaNegara').value = 'Indonesia';
+                document.getElementById('agama').value = 'Islam';
+                document.getElementById('pekerjaan').value = 'Nelayan / Perikanan';
+                document.getElementById('alamatPemohon').value = 'Dsn. Candisari RT.09 RW.03 Desa Tambakcemandi Kecamatan Sedati Kabupaten Sidoarjo';
+                daftarPerahu = [
+                    { namaPerahu: 'RONGGOLAWE', jmlMesin: '1', dayaMesin: '10,5', bahanBakar: 'Solar', lamaOperasional: '10 Jam' }
+                ];
+                renderDaftarPerahuForm();
+            }
+
+            validasiDanUpdateNIK(nikInput);
+            updatePreview();
+            showToast('Data contoh berhasil dimuat ke dalam formulir!', 'success');
+        }
+
+        // KOSONGKAN FORM PEMOHON
+        function kosongkanForm() {
+            document.getElementById('namaPemohon').value = '';
+            const nikInput = document.getElementById('nikPemohon');
+            nikInput.value = '';
+            validasiDanUpdateNIK(nikInput);
+
+            document.getElementById('tempatLahir').value = '';
+            document.getElementById('tanggalLahir').value = '';
+            document.getElementById('jenisKelamin').value = 'Laki-laki';
+            document.getElementById('agama').value = 'Islam';
+            document.getElementById('wargaNegara').value = 'Indonesia';
+            document.getElementById('statusKawin').value = 'Kawin';
+            document.getElementById('pekerjaan').value = currentJenis === 'SOLAR' ? 'Nelayan / Perikanan' : '';
+            document.getElementById('alamatPemohon').value = '';
+            document.getElementById('kecamatanPemohon').value = 'Sedati';
+            document.getElementById('kabupatenPemohon').value = 'Sidoarjo';
+            document.getElementById('keperluan').value = '';
+            document.getElementById('alamatDomisili').value = '';
+            document.getElementById('lokasiUsaha').value = '';
+            document.getElementById('namaUsaha').value = '';
+            document.getElementById('sejakTahun').value = '';
+
+            if (currentJenis === 'SOLAR') {
+                daftarPerahu = [
+                    { namaPerahu: '', jmlMesin: '1', dayaMesin: '', bahanBakar: 'Solar', lamaOperasional: '' }
+                ];
+                renderDaftarPerahuForm();
+            }
+
+            updatePreview();
+            showToast('Formulir telah dikosongkan dan siap diisi data warga baru.', 'info');
+        }
+
+        // CETAK / SIMPAN PDF
+        function cetakSurat() {
+            const nama = document.getElementById('namaPemohon').value.trim();
+            const nik = document.getElementById('nikPemohon').value.trim();
+
+            if (!nama) {
+                showToast('Perhatian: Nama Pemohon masih kosong.', 'warning');
+            } else if (nik.length > 0 && nik.length < 16) {
+                showToast('Perhatian: NIK belum lengkap 16 digit.', 'warning');
+            }
+
+            const panelPreview = document.getElementById('panel-preview');
+            const wasHidden = panelPreview.classList.contains('hidden');
+            if (wasHidden) {
+                panelPreview.classList.remove('hidden');
+            }
+
+            setTimeout(() => {
+                window.print();
+                if (wasHidden && window.innerWidth < 1024) {
+                    panelPreview.classList.add('hidden');
+                }
+            }, 150);
+        }
+
+        // SWITCH TAB MOBILE
+        function switchMobileTab(tab) {
+            const panelForm = document.getElementById('panel-form');
+            const panelPreview = document.getElementById('panel-preview');
+            const btnForm = document.getElementById('tab-btn-form');
+            const btnPreview = document.getElementById('tab-btn-preview');
+
+            if (tab === 'form') {
+                panelForm.classList.remove('hidden');
+                panelPreview.classList.add('hidden');
+                panelPreview.classList.remove('flex');
+
+                btnForm.className = 'flex-1 py-2 px-3 rounded-lg text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center gap-2';
+                btnPreview.className = 'flex-1 py-2 px-3 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 border border-transparent flex items-center justify-center gap-2';
+            } else {
+                panelForm.classList.add('hidden');
+                panelPreview.classList.remove('hidden');
+                panelPreview.classList.add('flex');
+
+                btnPreview.className = 'flex-1 py-2 px-3 rounded-lg text-sm font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center gap-2';
+                btnForm.className = 'flex-1 py-2 px-3 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 border border-transparent flex items-center justify-center gap-2';
+            }
+        }
+
+        // SISTEM TOAST NOTIFICATION
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            let bgClass = 'bg-slate-800 text-white';
+            if (type === 'success') bgClass = 'bg-emerald-700 text-white';
+            if (type === 'warning') bgClass = 'bg-amber-600 text-white';
+
+            toast.className = `${bgClass} px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto max-w-sm`;
+            toast.innerHTML = `<span>${message}</span>`;
+
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // INISIALISASI SAAT HALAMAN DIMUAT
+        window.addEventListener('DOMContentLoaded', () => {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('tanggalSurat').value = today;
+            document.getElementById('tahunSurat').value = new Date().getFullYear();
+
+            pilihJenisSurat('SKTM');
+        });
+    </script>
+</body>
+</html>
